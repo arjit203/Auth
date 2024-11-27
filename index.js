@@ -4,7 +4,7 @@ const connectDB = require("./config/database")
 const express = require('express');
 const app = express();
 const path = require('path');
-const port = 5001;
+const port = 5600;
 const Userrouter = require('./api/user1');
 
 //For acceppting post form data

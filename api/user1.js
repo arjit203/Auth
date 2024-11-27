@@ -39,11 +39,15 @@ const bcrypt = require('bcrypt');
 
 Userrouter.post('/signup', (req, res) => {
     let { name, email, password } = req.body;
-    name = name.trim();
-    email = email.trim();
-    password = password.trim();
-    console.log("Recieved name :",name);
-    if (name == "" || email == "" || password == "") {
+    
+        if((name && typeof name === 'string') && (email && typeof name === 'string') && (password && typeof name === 'string') ) {
+        name = name.trim();
+        email = email.trim();
+        password = password.trim();
+        }
+        console.log("Recieved name :",name);
+    
+        if (name == "" || email == "" || password == ""){
         return res.status(404).json({
             status: "FAILED",
             message: "Empty input fields!"
@@ -84,7 +88,6 @@ Userrouter.post('/signup', (req, res) => {
                         name,
                         email,
                         password: hashedPassword,
-                        dateofBirth,
                         verified : false
                     });
 
@@ -120,13 +123,14 @@ Userrouter.post('/signup', (req, res) => {
         }
         )
     }
-})
+    })
+        
 
 //send verification email
 const sendVerificationEmail = ({_id,email},res) =>
 {
     //url to be used in the email
-    const currentUrl = "http://localhost:5001/";
+    const currentUrl = "http://localhost:5600/";
     const uniqueString = uuidv4() + _id;
     const mailOptions ={
         from: process.env.AUTH_EMAIL,
@@ -398,4 +402,4 @@ const sendResetEmail = ({_id, email}, redirectUrl, res ) =>{
 }
 
 
-module.exports = Userrouter;
+module.exports = Userrouter
