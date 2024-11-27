@@ -1,25 +1,16 @@
 const express = require('express');
 const Userrouter = express.Router();
-
-//mongodb user model
 const User = require('./../models/user');
-
-//mongodb userverification model
 const UserVerification = require('./../models/UserVerification');
-
-//mongodb userverification model
 const PasswordReset = require('./../models/PasswordReset');
-
-//email handler
 const nodemailer = require('nodemailer');
 
 //unique string
 const {v4 : uuidv4} = require("uuid");
 
-//env variables
 require('dotenv').config();
 
-//nodemailer transporter //this is not working
+//nodemailer transporter 
 let transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
@@ -31,7 +22,7 @@ let transporter = nodemailer.createTransport({
 });
 
 
-//testing success
+//Successful Testing
 transporter.verify((error,success) =>
 {
     if(error){
@@ -44,18 +35,15 @@ transporter.verify((error,success) =>
 });
 
 
-//Password Handler
 const bcrypt = require('bcrypt');
 
-//signup
 Userrouter.post('/signup', (req, res) => {
-    let { name, email, password, dateofBirth } = req.body;
+    let { name, email, password } = req.body;
     name = name.trim();
     email = email.trim();
     password = password.trim();
-    dateofBirth = dateofBirth.trim();
     console.log("Recieved name :",name);
-    if (name == "" || email == "" || password == "" || dateofBirth == "") {
+    if (name == "" || email == "" || password == "") {
         return res.status(404).json({
             status: "FAILED",
             message: "Empty input fields!"
@@ -71,12 +59,8 @@ Userrouter.post('/signup', (req, res) => {
             status: "FAILED",
             message: "Invalid email entered"
         })
-    } else if (!new Date(dateofBirth).getTime()) {
-        return res.status(404).json({
-            status: "FAILED",
-            message: "Invalid date of birth entered"
-        })
-    } else if (password.length < 8) {
+    } 
+     else if (password.length < 8) {
         return res.status(404).json({
             status: "FAILED",
             message: "Password is too short!"
