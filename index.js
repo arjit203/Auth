@@ -15,9 +15,24 @@ app.use(express.urlencoded({ extended : false}))
 
 app.use('/user',Userrouter);
 
+//Default route for health check or debugging
+app.get('/', (req, res) => {
+    res.send('Authentication Server is Running');
+});
+
 connectDB();
 app.listen(port||process.env.port,() =>
 {
-    console.log(`Server running on port ${port}`);
+    console.log(`Server is running on port ${port}`);
 })
+
+
+// Error handling middleware for unexpected errors
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(500).json({
+        status: "FAILED",
+        message: "An internal server error occurred"
+    });
+});
 // console.log(process.env.AUTH_EMAIL,process.env.AUTH_PASS);

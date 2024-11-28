@@ -3,7 +3,7 @@ const Schema = mongoose.Schema;
 
 const UserVerificationSchema = new Schema({
   userId: { type: String },
- uniqueString: { type: String, unique: true },
+  uniqueString: { type: String, unique: true },
   createdAt: { type: Date },
   expiresAt: { type: Date },
 });

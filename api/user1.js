@@ -13,34 +13,9 @@ const nodemailer = require('nodemailer');
 const bcrypt = require('bcrypt');
 
 
-//unique string
-// const {v4 : uuidv4} = require("uuid");
 
 require('dotenv').config();
 
-// //nodemailer transporter 
-// let transporter = nodemailer.createTransport({
-//     service: "gmail",
-//     auth: {
-//         user: process.env.AUTH_EMAIL,
-//         pass: process.env.AUTH_PASS,
-//     },
-//     logger: true,
-//     debug: true,
-// });
-
-
-// //Successful Testing
-// transporter.verify((error,success) =>
-// {
-//     if(error){
-//         console.log(error);
-//     }
-//     else{
-//         console.log("Ready for messages");
-//         console.log(success);
-//     }
-// });
 
 
 
@@ -88,8 +63,9 @@ Userrouter.post('/signup', async (req, res) => {
                         status: "FAILED",
                         message: "User with the provided email already exists"
                     });
-                } else {
-                    // Hash the password
+                } 
+                
+                else { // Hash the password
                     const saltRounds = 10;
                     bcrypt.hash(password, saltRounds).then(hashedPassword => {
                         // Create a new user
@@ -106,8 +82,8 @@ Userrouter.post('/signup', async (req, res) => {
                                 console.log("User saved successfully:", result);
                                 sendVerificationEmail(result, res);
                             })
+
                             .catch(err => {
-                                console.error("Error saving user:", err);
                                 return res.status(500).json({
                                     status: "FAILED",
                                     message: "An error occurred while saving the user Account!!."
@@ -140,24 +116,50 @@ Userrouter.post('/signup', async (req, res) => {
 });
 
   
-        
+    
+//unique string
+ const {v4 : uuidv4} = require("uuid");    
 
 //send verification email
 const sendVerificationEmail = ({_id,email},res) =>
 {
-    //url to be used in the email
-    const currentUrl = "http://localhost:5600/";
+    //nodemailer transporter to send verification email
+let transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+        user: process.env.AUTH_EMAIL,
+        pass: process.env.AUTH_PASS,
+    },
+    logger: true,
+    debug: true,
+});
+
+
+//Testing Transporter
+transporter.verify((error,success) =>
+{
+    if(error){
+        console.log(error);
+    }
+    else{
+        console.log("Ready for messages");
+        console.log(success);
+    }
+});
+
     const uniqueString = uuidv4() + _id;
-    console.log("ddd",process.env.AUTH_EMAIL)
+
+    const verificationLink = `http://localhost:5600/user/verify-email/${uniqueString}`;
     const mailOptions ={
         from: process.env.AUTH_EMAIL,
         to: email,
-        subject: "Verify Your Email",
-        html :
-       ` <p>Verify your email address.</p>
-        <p>This link <b>expires in 1 hour</b>.</p>
-        <p>Press <a href="${currentUrl}user/verify/${_id}/${uniqueString}">here</a> to proceed.</p>`
+        subject: "Verify Your Email Address",
+        html :  `
+        <p>Thank you for signing up. Please verify your email by clicking the link below:</p>
+        <p>Press <a href="${verificationLink}">here</a> to proceed.</p>
+        <p>This link <b>expires in 1 hour</b>.</p>`
     };
+
 
     //hash the uniqueString
     const saltRounds= 10;
@@ -175,7 +177,7 @@ const sendVerificationEmail = ({_id,email},res) =>
                 transporter.sendMail(mailOptions)
                     .then(() => {
                         res.json({
-                            status: "PENDING",
+                            status: "SUCCESS",
                             message: "Verification email sent!",
                         });
                     })
