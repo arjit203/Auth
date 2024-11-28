@@ -2,7 +2,7 @@
   "name": "login_server",
   "version": "1.0.0",
   "description": "Backend for a login system",
-  "main": "login.js",
+  "main": "index.js",
   "scripts": {
     "start": "nodemon index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
