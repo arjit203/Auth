@@ -155,7 +155,11 @@ transporter.verify((error,success) =>
         to: email,
         subject: "Verify Your Email Address",
         html :  `
-        <p>Thank you for signing up. Please verify your email by clicking the link below:</p>
+        <p>Hi ${name},</p>
+        <p>Thank you for signing up.</p>
+        <br>
+        <p>Please verify your email by clicking the link below:</p>
+        
         <p>Press <a href="${verificationLink}">here</a> to proceed.</p>
         <p>This link <b>expires in 1 hour</b>.</p>`
     };
@@ -306,35 +310,45 @@ try{
 
 //Password reset stuff
 Userrouter.post("/requestPasswordReset",(req,res) =>
-{
-    const {email} = req.body;
-
-    //check if email exists
-    if (!email || email.trim() === "") {
-        return res.json({
-            status: "FAILED",
-            message: "Email is required!"
-        });
-    }
-
-    User.findOne({ email }).then(user => {
-        if (!user) {
-            return res.json({
-                status: "FAILED",
-                message: "No user found with this email!"
-            });
-        }
-    })
-    .catch(error =>{
-        console.log(error);
-        res.json({
-            status : "FAILED",
-            message : "An error occured while checking for existing user",
+    {
+        const {email,redirectUrl} = req.body;
+    
+        //check if email exists
+        User
+        .find({email})
+        .then((data) => {
+            if(data.length){
+                //user exists
+    
+                //check if user is verified
+                if(!data[0].verified) {
+                    res.json({
+                        status : "FAILED",
+                        message : "Email hasn't been verified yet. Check your inbox",
+                    });
+                } else {
+                    // proceed with email to reset password
+                    sendResetEmail(data[0],redirectUrl,res);
+                }
+            }
+            else {
+                res.json({
+                    status : "FAILED",
+                    message : "No account with the supplied email exists!"
+                });
+            }
+        })
+        .catch(error =>{
+            console.log(error);
+            res.json({
+                status : "FAILED",
+                message : "An error occured while checking for existing user",
+            })
         })
     })
-});
 
 
+    
 //send password reset email
 // const sendResetEmail = ({_id, email}, redirectUrl, res ) =>{
 //      const resetString = uuidv4 + _id;
