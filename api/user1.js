@@ -350,79 +350,79 @@ Userrouter.post("/requestPasswordReset",(req,res) =>
 
     
 //send password reset email
-// const sendResetEmail = ({_id, email}, redirectUrl, res ) =>{
-//      const resetString = uuidv4 + _id;
-//      //First, we clear all existing reset records
-//      PasswordReset.deleteMany({ userId : _id})
-//      .then(result => {
-//         //reset records deleted successfully 
-//         //Now we send the email
+const sendResetEmail = ({_id, email}, redirectUrl, res ) =>{
+     const resetString = uuidv4 + _id;
+     //First, we clear all existing reset records
+     PasswordReset.deleteMany({ userId : _id})
+     .then(result => {
+        //reset records deleted successfully 
+        //Now we send the email
 
-//         //mail options
-//         const mailOptions ={
-//             from: process.env.AUTH_EMAIL,
-//             to: email,
-//             subject: "Password reset",
-//             html :
-//            ` <p>Use the link below to reset your password.</p>
-//             <p>This link <b>expires in 1 hour</b>.</p>
-//             <p>Press <a href="${redirectUrl} + "/" + ${_id} + "/" + ${resetString}">here</a> to proceed.</p>`
-//         };
+        //mail options
+        const mailOptions ={
+            from: process.env.AUTH_EMAIL,
+            to: email,
+            subject: "Password reset",
+            html :
+           ` <p>Use the link below to reset your password.</p>
+            <p>This link <b>expires in 1 hour</b>.</p>
+            <p>Press <a href="${redirectUrl} + "/" + ${_id} + "/" + ${resetString}">here</a> to proceed.</p>`
+        };
        
-//         //hash the reset string
-//          const saltRounds = 10;
-//          bcrypt.hash().then(hashedResetString =>{
-//             //set values in password reset collection
-//             const newPasswordReset = new PasswordReset({
-//                   userId : _id,
-//                   uniqueString: hashedResetString,
-//                   createdAt: Date.now(),
-//                   expiresAt: Date.now() + 3600000
-//             });
-//            newPasswordReset.save()
-//            .then(() => {
-//              transporter.sendMail(mailOptions)
-//              .then(() => {
-//                 //reset email sent and password
-//                 res.json({
-//                     status : "PENDING",
-//                     message : "Password reset email sent",
-//                 })
-//              })
-//              .catch(error => {
-//                 console.log(error);
-//                 return res.status(500).json({
-//                     status : "FAILED",
-//                     message : "Password reset email failed!",
-//                 });
-//              })
+        //hash the reset string
+         const saltRounds = 10;
+         bcrypt.hash().then(hashedResetString =>{
+            //set values in password reset collection
+            const newPasswordReset = new PasswordReset({
+                  userId : _id,
+                  uniqueString: hashedResetString,
+                  createdAt: Date.now(),
+                  expiresAt: Date.now() + 3600000
+            });
+           newPasswordReset.save()
+           .then(() => {
+             transporter.sendMail(mailOptions)
+             .then(() => {
+                //reset email sent and password
+                res.json({
+                    status : "PENDING",
+                    message : "Password reset email sent",
+                })
+             })
+             .catch(error => {
+                console.log(error);
+                return res.status(500).json({
+                    status : "FAILED",
+                    message : "Password reset email failed!",
+                });
+             })
 
-//            })
-//            .catch(error => {
-//             console.log(error);
-//             return res.status(500).json({
-//                 status : "FAILED",
-//                 message : "Couldn't save password reset data!",
-//             });
-//            })
-//          }).catch(error => {
-//             console.log(error);
-//             return res.status(500).json({
-//                 status : "FAILED",
-//                 message : "An error occured while hashing the password reset data!",
-//             });
+           })
+           .catch(error => {
+            console.log(error);
+            return res.status(500).json({
+                status : "FAILED",
+                message : "Couldn't save password reset data!",
+            });
+           })
+         }).catch(error => {
+            console.log(error);
+            return res.status(500).json({
+                status : "FAILED",
+                message : "An error occured while hashing the password reset data!",
+            });
 
-//          })
+         })
 
-//      })
-//      .catch(error => {
-//         console.log(error);
-//         res.json({
-//             status : "FAILED",
-//             message : "Clearing existing password reset records failed",
-//         });
-//      })
-// }
+     })
+     .catch(error => {
+        console.log(error);
+        res.json({
+            status : "FAILED",
+            message : "Clearing existing password reset records failed",
+        });
+     })
+}
 
 
 module.exports = Userrouter
