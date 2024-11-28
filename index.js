@@ -1,24 +1,22 @@
 //mongodb
 
-const connectDB = require("./config/database")
+const connectDB = require("./config/database")  //database connection
 const express = require('express');
 const app = express();
 const path = require('path');
-const port = 5600;
+const port = 3600;
 const Userrouter = require('./api/user1');
 
 //For acceppting post form data
 const bodyParser = require('express').json;
 app.use(bodyParser());
 
+app.use(express.urlencoded({ extended : false}))
+
 app.use('/user',Userrouter);
 
-// app.use(express.static(path.join(__dirname, 'public')));
-
-
-
 connectDB();
-app.listen(port,() =>
+app.listen(port||process.env.port,() =>
 {
     console.log(`Server running on port ${port}`);
 })
