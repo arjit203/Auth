@@ -2,8 +2,7 @@ const express = require('express');
 const Userrouter = express.Router();
 
 const User = require('./../models/user');  //mongodb user model
-
-const UserVerification = require('./../models/UserVerification');//mongodb userverification model
+const UserVerification = require('../models/UserVerification');//mongodb userverification model
 const PasswordReset = require('./../models/PasswordReset');
 
 //email handler
@@ -24,13 +23,12 @@ require('dotenv').config();
 Userrouter.post('/signup', async (req, res) => {
     let { name, email, password } = req.body;
 
+    // Validate input fields
     if ((name && typeof name === 'string') && (email && typeof email === 'string') && (password && typeof password === 'string')) {
         name = name.trim();
         email = email.trim();
         password = password.trim();
     }
-
-    console.log("Received name:", name);
 
     if (name == "" || email == "" || password == "") {
         return res.status(404).json({
@@ -54,66 +52,49 @@ Userrouter.post('/signup', async (req, res) => {
         });
     }
 
-    // Checking if user already exists
+    // Check if user already exists
     try {
-        User.findOne({ email })
-            .then(isUserExist => {
-                if (isUserExist) {
-                    return res.status(404).json({
-                        status: "FAILED",
-                        message: "User with the provided email already exists"
-                    });
-                } 
-                
-                else { // Hash the password
-                    const saltRounds = 10;
-                    bcrypt.hash(password, saltRounds).then(hashedPassword => {
-                        // Create a new user
-                        const newUser = new User({
-                            name,
-                            email,
-                            password: hashedPassword,
-                            verified: false
-                        });
-
-                        newUser.save()
-                            .then(result => {
-                                // Handle account verification
-                                console.log("User saved successfully:", result);
-                                sendVerificationEmail(result, res);
-                            })
-
-                            .catch(err => {
-                                return res.status(500).json({
-                                    status: "FAILED",
-                                    message: "An error occurred while saving the user Account!!."
-                                });
-                            });
-                    })
-                        .catch(err => {
-                            console.log(err);
-                            return res.status(500).json({
-                                status: "FAILED",
-                                message: "An error Occured while hashing password!"
-                            });
-                        });
-                }
-            })
-            .catch(err => {
-                console.log(err);
-                return res.status(500).json({
-                    status: "FAILED",
-                    message: "An error Occured while checking for existing user!"
-                });
+        const isUserExist = await User.findOne({ email });
+        if (isUserExist) {
+            return res.status(404).json({
+                status: "FAILED",
+                message: "User with the provided email already exists"
             });
+        }
+
+        // Hash the password
+        const saltRounds = 10;
+        bcrypt.hash(password, saltRounds).then(async (hashedPassword) => {
+            // Create a new user
+            const newUser = new User({
+                name,
+                email,
+                password: hashedPassword,
+                verified: false
+            });
+
+            // Save the user
+            await newUser.save();
+
+            // Send verification email
+            sendVerificationEmail(newUser, res);  // Send verification email after user is saved
+        })
+        .catch(err => {
+            return res.status(500).json({
+                status: "FAILED",
+                message: "An error occurred while hashing the password."
+            });
+        });
     } catch (err) {
-        console.log(err);
         return res.status(500).json({
             status: "FAILED",
-            message: "An unexpected error occurred!"
+            message: "An error occurred while checking for existing user."
         });
     }
 });
+
+
+
 
   
     
@@ -121,97 +102,98 @@ Userrouter.post('/signup', async (req, res) => {
  const {v4 : uuidv4} = require("uuid");    
 
 //send verification email
-const sendVerificationEmail = ({_id,email},res) =>
-{
-    //nodemailer transporter to send verification email
-let transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-        user: process.env.AUTH_EMAIL,
-        pass: process.env.AUTH_PASS,
-    },
-    logger: true,
-    debug: true,
-});
+const sendVerificationEmail = ({ _id, email, name }, res) => {
 
-
-//Testing Transporter
-transporter.verify((error,success) =>
-{
-    if(error){
-        console.log(error);
+     // Validate if email exists
+     if (!email || email.trim() === "") {
+        console.error("No email provided!");
+        return res.status(400).json({
+            status: "FAILED",
+            message: "No email provided!",
+        });
     }
-    else{
-        console.log("Ready for messages");
-        console.log(success);
+
+    // Check if the email is from a Gmail domain
+    if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(email)) {
+        console.log("Invalid email domain:", email);
+        return res.status(400).json({
+            status: "FAILED",
+            message: "Only Gmail addresses are allowed for verification.",
+        });
     }
-});
 
-    const uniqueString = uuidv4() + _id;
 
+    // Create a transport for sending email
+    let transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+            user: process.env.AUTH_EMAIL,
+            pass: process.env.AUTH_PASS,
+        },
+        logger: true,
+        debug: true,
+    });
+
+    const uniqueString = uuidv4() + _id;  // Create a unique string for the verification link
     const verificationLink = `http://localhost:5600/user/verify-email/${uniqueString}`;
-    const mailOptions ={
-        from: process.env.AUTH_EMAIL,
-        to: email,
+
+    const mailOptions = {
+        from: process.env.AUTH_EMAIL,   // Sender's email
+        to: email,    // Recipient's email
         subject: "Verify Your Email Address",
-        html :  `
-        <p>Hi ${name},</p>
-        <p>Thank you for signing up.</p>
-        <br>
-        <p>Please verify your email by clicking the link below:</p>
-        
-        <p>Press <a href="${verificationLink}">here</a> to proceed.</p>
-        <p>This link <b>expires in 1 hour</b>.</p>`
+        html: `
+            <p>Hi ${name},</p>
+            <p>Thank you for signing up.</p>
+            <p>Please verify your email by clicking the link below:</p>
+            <p><a href="${verificationLink}">Verify Email</a></p>
+            <p>This link <b>expires in 1 hour</b>.</p>
+        `,
     };
 
 
-    //hash the uniqueString
-    const saltRounds= 10;
-    bcrypt.hash(uniqueString, saltRounds).then((hashedUniqueString) =>{
+    console.log("Sending verification email to:", email);  // Log email for debugging
+
+    // Hash the unique string and save it for verification
+    bcrypt.hash(uniqueString, 10).then((hashedUniqueString) => {
         const newVerification = new UserVerification({
             userId: _id,
             uniqueString: hashedUniqueString,
             createdAt: Date.now(),
-            expiresAt: Date.now() + 3600000, // 1 hour
+            expiresAt: Date.now() + 3600000,  // 1 hour expiry time
         });
 
-        newVerification.save()
-            .then(() => {
-                console.log("verification email sent successfully")
-                transporter.sendMail(mailOptions)
-                    .then(() => {
-                        res.json({
-                            status: "SUCCESS",
-                            message: "Verification email sent!",
-                        });
-                    })
-                    .catch((error) => {
-                        console.log("Error while sending")
-                        return res.status(500).json({
-                            status: "FAILED",
-                            message: "Failed to send verification email!",
-                        });
+        newVerification.save().then(() => {
+            // Send the verification email
+            transporter.sendMail(mailOptions, (error, info) => {
+                if (error) {
+                    console.log("Error sending email:", error);
+                    return res.status(500).json({
+                        status: "FAILED",
+                        message: "Failed to send verification email.",
                     });
-            })
-            .catch((error) => {
-                console.log("Error while saving");
-                return res.status(500).json({
-                    status: "FAILED",
-                    message: "An error occurred while saving the verification record!",
-                });
+                } else {
+                    console.log("Email sent:", info.response);
+                    res.json({
+                        status: "SUCCESS",
+                        message: "Verification email sent!",
+                    });
+                }
             });
-    })
-        .catch((error) =>
-    {   console.log("Error while hashing");
+        }).catch((error) => {
+            console.log("Error saving verification record:", error);
+            return res.status(500).json({
+                status: "FAILED",
+                message: "An error occurred while saving verification record.",
+            });
+        });
+    }).catch((error) => {
+        console.log("Error hashing verification string:", error);
         return res.status(500).json({
             status: "FAILED",
-            message : "Error occured while hashing email data!",
+            message: "Error occurred while hashing verification string.",
         });
-    }
-    )
-
-}
-
+    });
+};
 
 
 
