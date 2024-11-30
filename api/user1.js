@@ -1,410 +1,428 @@
-const express = require('express');
+const express = require("express");
 const Userrouter = express.Router();
 
-const User = require('./../models/user');  //mongodb user model
-const UserVerification = require('../models/UserVerification');//mongodb userverification model
-const PasswordReset = require('./../models/PasswordReset');
+const User = require("./../models/user"); //mongodb user model
+const UserVerification = require("../models/UserVerification"); //mongodb userverification model
+const PasswordReset = require("./../models/PasswordReset");
 
 //email handler
-const nodemailer = require('nodemailer');
+const nodemailer = require("nodemailer");
 
 // password handler
-const bcrypt = require('bcrypt');
+const bcrypt = require("bcrypt");
 
-
-
-require('dotenv').config();
-
-
+require("dotenv").config();
 
 
 //SIGNUP
 
-Userrouter.post('/signup', async (req, res) => {
-    let { name, email, password } = req.body;
+Userrouter.post("/signup", async (req, res) => {
+  let { name, email, password } = req.body;
 
-    // Validate input fields
-    if ((name && typeof name === 'string') && (email && typeof email === 'string') && (password && typeof password === 'string')) {
-        name = name.trim();
-        email = email.trim();
-        password = password.trim();
+  // Validate input fields
+  if (
+    name &&
+    typeof name === "string" &&
+    email &&
+    typeof email === "string" &&
+    password &&
+    typeof password === "string"
+  ) {
+    name = name.trim();
+    email = email.trim();
+    password = password.trim();
+  }
+
+  if (name == "" || email == "" || password == "") {
+    return res.status(404).json({
+      status: "FAILED",
+      message: "Empty input fields!",
+    });
+  } else if (!/^[a-zA-Z\s]*$/.test(name)) {
+    return res.status(404).json({
+      status: "FAILED",
+      message: "Invalid name entered",
+    });
+  } else if (!/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(email)) {
+    return res.status(404).json({
+      status: "FAILED",
+      message: "Invalid email entered",
+    });
+  } else if (password.length < 8) {
+    return res.status(404).json({
+      status: "FAILED",
+      message: "Password is too short!",
+    });
+  }
+
+  // Check if user already exists
+  try {
+    const isUserExist = await User.findOne({ email });
+    if (isUserExist) {
+      return res.status(404).json({
+        status: "FAILED",
+        message: "User with the provided email already exists",
+      });
     }
 
-    if (name == "" || email == "" || password == "") {
-        return res.status(404).json({
-            status: "FAILED",
-            message: "Empty input fields!"
+    // Hash the password
+    const saltRounds = 10;
+    bcrypt
+      .hash(password, saltRounds)
+      .then(async (hashedPassword) => {
+        // Create a new user
+        const newUser = new User({
+          name,
+          email,
+          password: hashedPassword,
+          verified: false,
         });
-    } else if (!/^[a-zA-Z\s]*$/.test(name)) {
-        return res.status(404).json({
-            status: "FAILED",
-            message: "Invalid name entered"
-        });
-    } else if (!/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(email)) {
-        return res.status(404).json({
-            status: "FAILED",
-            message: "Invalid email entered"
-        });
-    } else if (password.length < 8) {
-        return res.status(404).json({
-            status: "FAILED",
-            message: "Password is too short!"
-        });
-    }
 
-    // Check if user already exists
-    try {
-        const isUserExist = await User.findOne({ email });
-        if (isUserExist) {
-            return res.status(404).json({
-                status: "FAILED",
-                message: "User with the provided email already exists"
-            });
-        }
+        // Save the user
+        await newUser.save();
 
-        // Hash the password
-        const saltRounds = 10;
-        bcrypt.hash(password, saltRounds).then(async (hashedPassword) => {
-            // Create a new user
-            const newUser = new User({
-                name,
-                email,
-                password: hashedPassword,
-                verified: false
-            });
-
-            // Save the user
-            await newUser.save();
-
-            // Send verification email
-            sendVerificationEmail(newUser, res);  // Send verification email after user is saved
-        })
-        .catch(err => {
-            return res.status(500).json({
-                status: "FAILED",
-                message: "An error occurred while hashing the password."
-            });
-        });
-    } catch (err) {
+        // Send verification email
+        sendVerificationEmail(newUser, res); // Send verification email after user is saved
+      })
+      .catch((err) => {
         return res.status(500).json({
-            status: "FAILED",
-            message: "An error occurred while checking for existing user."
+          status: "FAILED",
+          message: "An error occurred while hashing the password.",
         });
-    }
+      });
+  } catch (err) {
+    return res.status(500).json({
+      status: "FAILED",
+      message: "An error occurred while checking for existing user.",
+    });
+  }
 });
 
-
-
-
-  
-    
 //unique string
- const {v4 : uuidv4} = require("uuid");    
+const { v4: uuidv4 } = require("uuid");
 
 //send verification email
 const sendVerificationEmail = ({ _id, email, name }, res) => {
-
-     // Validate if email exists
-     if (!email || email.trim() === "") {
-        console.error("No email provided!");
-        return res.status(400).json({
-            status: "FAILED",
-            message: "No email provided!",
-        });
-    }
-
-    // Check if the email is from a Gmail domain
-    if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(email)) {
-        console.log("Invalid email domain:", email);
-        return res.status(400).json({
-            status: "FAILED",
-            message: "Only Gmail addresses are allowed for verification.",
-        });
-    }
-
-
-    // Create a transport for sending email
-    let transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-            user: process.env.AUTH_EMAIL,
-            pass: process.env.AUTH_PASS,
-        },
-        logger: true,
-        debug: true,
+  // Validate if email exists
+  if (!email || email.trim() === "") {
+    console.error("No email provided!");
+    return res.status(400).json({
+      status: "FAILED",
+      message: "No email provided!",
     });
+  }
 
-    const uniqueString = uuidv4() + _id;  // Create a unique string for the verification link
-    const verificationLink = `http://localhost:5600/user/verify-email/${uniqueString}`;
+  // Check if the email is from a Gmail domain
+  if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(email)) {
+    console.log("Invalid email domain:", email);
+    return res.status(400).json({
+      status: "FAILED",
+      message: "Only Gmail addresses are allowed for verification.",
+    });
+  }
 
-    const mailOptions = {
-        from: process.env.AUTH_EMAIL,   // Sender's email
-        to: email,    // Recipient's email
-        subject: "Verify Your Email Address",
-        html: `
+  // Create a transport for sending email
+  let transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.AUTH_EMAIL,
+      pass: process.env.AUTH_PASS,
+    },
+    logger: true,
+    debug: true,
+  });
+
+  const uniqueString = uuidv4() + _id; // Create a unique string for the verification link
+
+ // Use the BASE_URL from environment variable to generate the link
+ const verificationLink = `${process.env.BASE_URL}/user/verify-email/${uniqueString}`;
+
+ 
+  // Log the verification link for debugging
+  console.log("Verification Link:", verificationLink);
+
+  const mailOptions = {
+    from: process.env.AUTH_EMAIL, // Sender's email
+    to: email, // Recipient's email
+    subject: "Verify Your Email Address",
+    html: `
             <p>Hi ${name},</p>
             <p>Thank you for signing up.</p>
             <p>Please verify your email by clicking the link below:</p>
             <p><a href="${verificationLink}">Verify Email</a></p>
             <p>This link <b>expires in 1 hour</b>.</p>
         `,
-    };
+  };
 
+  console.log("Sending verification email to:", email); // Log email for debugging
 
-    console.log("Sending verification email to:", email);  // Log email for debugging
+  // Hash the unique string and save it for verification
+  bcrypt
+    .hash(uniqueString, 10)
+    .then((hashedUniqueString) => {
+      const newVerification = new UserVerification({
+        userId: _id,
+        uniqueString: hashedUniqueString,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 3600000, // 1 hour expiry time
+      });
 
-    // Hash the unique string and save it for verification
-    bcrypt.hash(uniqueString, 10).then((hashedUniqueString) => {
-        const newVerification = new UserVerification({
-            userId: _id,
-            uniqueString: hashedUniqueString,
-            createdAt: Date.now(),
-            expiresAt: Date.now() + 3600000,  // 1 hour expiry time
-        });
-
-        newVerification.save().then(() => {
-            // Send the verification email
-            transporter.sendMail(mailOptions, (error, info) => {
-                if (error) {
-                    console.log("Error sending email:", error);
-                    return res.status(500).json({
-                        status: "FAILED",
-                        message: "Failed to send verification email.",
-                    });
-                } else {
-                    console.log("Email sent:", info.response);
-                    res.json({
-                        status: "SUCCESS",
-                        message: "Verification email sent!",
-                    });
-                }
-            });
-        }).catch((error) => {
-            console.log("Error saving verification record:", error);
-            return res.status(500).json({
+      newVerification
+        .save()
+        .then(() => {
+          // Send the verification email
+          transporter.sendMail(mailOptions, (error, info) => {
+            if (error) {
+              console.log("Error sending email:", error);
+              return res.status(500).json({
                 status: "FAILED",
-                message: "An error occurred while saving verification record.",
-            });
-        });
-    }).catch((error) => {
-        console.log("Error hashing verification string:", error);
-        return res.status(500).json({
+                message: "Failed to send verification email.",
+              });
+            } else {
+              console.log("Email sent:", info.response);
+              res.json({
+                status: "SUCCESS",
+                message: "Verification email sent!",
+              });
+            }
+          });
+        })
+        .catch((error) => {
+          console.log("Error saving verification record:", error);
+          return res.status(500).json({
             status: "FAILED",
-            message: "Error occurred while hashing verification string.",
+            message: "An error occurred while saving verification record.",
+          });
         });
+    })
+    .catch((error) => {
+      console.log("Error hashing verification string:", error);
+      return res.status(500).json({
+        status: "FAILED",
+        message: "Error occurred while hashing verification string.",
+      });
     });
 };
 
-
-
-
 //verify email
-Userrouter.get('/verify/:userId/:uniqueString', async(req, res) => {
+Userrouter.get("/verify/:userId/:uniqueString", async (req, res) => {
     const { userId, uniqueString } = req.params;
-
-    UserVerification.findOne({ userId }).then((record) => {
-            if (!record) {
-                return res.status(404).json({ 
-                    status: 'FAILED', 
-                    message: 'Verification link expired or invalid.' 
-                });
-            } 
-            
-            else {
-                bcrypt.compare(uniqueString, record.uniqueString).then((isMatch) => {
-                    if (isMatch) {
-                        User.updateOne({ _id: userId }, { verified: true })
-                            .then(() => {
-                                UserVerification.deleteOne({ userId })
-                                    .then(() => res.redirect('/login'))
-                                    .catch((err) =>  res.status(500).json({ status: 'FAILED', message: 'Error updating user.' }));
-                            })
-                            .catch((err) =>  res.status(500).json({ status: 'FAILED', message: 'Error updating user.' }));
-                    } else {
-                        return res.status(401).json({ status: 'FAILED', message: 'Invalid verification link.' });
-                    }
-                });
-            }
-        })
-        .catch((err) => res.status(500).json({ status: 'FAILED', message: 'Error verifying user.' }));
-
-});
+  
+    try {
+      // Find the verification record by userId
+      const record = await UserVerification.findOne({ userId });
+  
+      if (!record) {
+        return res.status(404).json({
+          status: "FAILED",
+          message: "Verification link expired or invalid.",
+        });
+      }
+  
+      const now = Date.now();
+  
+      // Check if the verification link has expired
+      if (now > record.expiresAt) {
+        return res.status(404).json({
+          status: "FAILED",
+          message: "Verification link has expired.",
+        });
+      }
 
 
+      console.log('URL uniqueString:', uniqueString);
+      console.log('Stored uniqueString:', record.uniqueString);
 
+  
+      // Compare the uniqueString in the URL with the hashed string stored in the DB
+      const isMatch = await bcrypt.compare(uniqueString, record.uniqueString);
+  
+      if (isMatch) {
+        // If matched, update the user to verified
+        await User.updateOne({ _id: userId }, { verified: true });
+  
+        // Delete the verification record from the DB
+        await UserVerification.deleteOne({ userId });
+  
+        return res.redirect("/login");
+      } else {
+        return res.status(401).json({
+          status: "FAILED",
+          message: "Invalid verification link.",
+        });
+      }
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({
+        status: "FAILED",
+        message: "Error verifying user.",
+      });
+    }
+  });
+  
 
 //LOGIN
-Userrouter.post('/login', async(req,res) =>
-{
-    let{email, password,} = req.body;
-    email = email.trim();    //Extra spaces entered by the user (before or after their input) are removed.
-    password = password.trim();
+Userrouter.post("/login", async (req, res) => {
+  let { email, password } = req.body;
+  email = email.trim(); //Extra spaces entered by the user (before or after their input) are removed.
+  password = password.trim();
 
-    if(email === "" || password === ""){
-        return res.status(404).json({
-    status : "FAILED",
-    message : "Empty credentials supplied"
-});
-}
-try{
+  if (email === "" || password === "") {
+    return res.status(404).json({
+      status: "FAILED",
+      message: "Empty credentials supplied",
+    });
+  }
+  try {
     //check if user exists
-   const user = await User.findOne({email});
-   if (!user) {
-    return res.json({ 
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.json({
         status: "FAILED",
-        message: "Invalid credentials!"
-     });
-}
-          
-            //check if user is verified
-            if(!user.verified){
-                return res.status(404).json ({
-                    status : "FAILED",
-                    message : "Email hasn't been verified yet. Check your inbox",
-                });
-            }
+        message: "Invalid credentials!",
+      });
+    }
 
-                const isPasswordMatch = await bcrypt.compare(password,user.password);
-                if (!isPasswordMatch) {
-                    return res.json({
-                        status: "FAILED",
-                        message: "Invalid password!"
-                    });
-                } 
+    //check if user is verified
+    if (!user.verified) {
+      return res.status(404).json({
+        status: "FAILED",
+        message: "Email hasn't been verified yet. Check your inbox",
+      });
+    }
 
+    const isPasswordMatch = await bcrypt.compare(password, user.password);
+    if (!isPasswordMatch) {
+      return res.json({
+        status: "FAILED",
+        message: "Invalid password!",
+      });
+    }
 
-                return res.json({
-                    status: "SUCCESS",
-                    message: "Sign-in successful!",
-                    data: user,
-                });
-             } 
-             catch (error) {
-                console.error(error);
-                return res.json({
-                    status: "FAILED",
-                    message: "An error occurred during Sign-in.",
-                });
-            }
+    return res.json({
+      status: "SUCCESS",
+      message: "Sign-in successful!",
+      data: user,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.json({
+      status: "FAILED",
+      message: "An error occurred during Sign-in.",
+    });
+  }
 });
-
-     
 
 //Password reset stuff
-Userrouter.post("/requestPasswordReset",(req,res) =>
-    {
-        const {email,redirectUrl} = req.body;
-    
-        //check if email exists
-        User
-        .find({email})
-        .then((data) => {
-            if(data.length){
-                //user exists
-    
-                //check if user is verified
-                if(!data[0].verified) {
-                    res.json({
-                        status : "FAILED",
-                        message : "Email hasn't been verified yet. Check your inbox",
-                    });
-                } else {
-                    // proceed with email to reset password
-                    sendResetEmail(data[0],redirectUrl,res);
-                }
-            }
-            else {
-                res.json({
-                    status : "FAILED",
-                    message : "No account with the supplied email exists!"
-                });
-            }
-        })
-        .catch(error =>{
-            console.log(error);
-            res.json({
-                status : "FAILED",
-                message : "An error occured while checking for existing user",
-            })
-        })
-    })
+Userrouter.post("/requestPasswordReset", (req, res) => {
+  const { email, redirectUrl } = req.body;
 
+  //check if email exists
+  User.find({ email })
+    .then((data) => {
+      if (data.length) {
+        //user exists
 
-    
-//send password reset email
-const sendResetEmail = ({_id, email}, redirectUrl, res ) =>{
-     const resetString = uuidv4 + _id;
-     //First, we clear all existing reset records
-     PasswordReset.deleteMany({ userId : _id})
-     .then(result => {
-        //reset records deleted successfully 
-        //Now we send the email
-
-        //mail options
-        const mailOptions ={
-            from: process.env.AUTH_EMAIL,
-            to: email,
-            subject: "Password reset",
-            html :
-           ` <p>Use the link below to reset your password.</p>
-            <p>This link <b>expires in 1 hour</b>.</p>
-            <p>Press <a href="${redirectUrl} + "/" + ${_id} + "/" + ${resetString}">here</a> to proceed.</p>`
-        };
-       
-        //hash the reset string
-         const saltRounds = 10;
-         bcrypt.hash().then(hashedResetString =>{
-            //set values in password reset collection
-            const newPasswordReset = new PasswordReset({
-                  userId : _id,
-                  uniqueString: hashedResetString,
-                  createdAt: Date.now(),
-                  expiresAt: Date.now() + 3600000
-            });
-           newPasswordReset.save()
-           .then(() => {
-             transporter.sendMail(mailOptions)
-             .then(() => {
-                //reset email sent and password
-                res.json({
-                    status : "PENDING",
-                    message : "Password reset email sent",
-                })
-             })
-             .catch(error => {
-                console.log(error);
-                return res.status(500).json({
-                    status : "FAILED",
-                    message : "Password reset email failed!",
-                });
-             })
-
-           })
-           .catch(error => {
-            console.log(error);
-            return res.status(500).json({
-                status : "FAILED",
-                message : "Couldn't save password reset data!",
-            });
-           })
-         }).catch(error => {
-            console.log(error);
-            return res.status(500).json({
-                status : "FAILED",
-                message : "An error occured while hashing the password reset data!",
-            });
-
-         })
-
-     })
-     .catch(error => {
-        console.log(error);
+        //check if user is verified
+        if (!data[0].verified) {
+          res.json({
+            status: "FAILED",
+            message: "Email hasn't been verified yet. Check your inbox",
+          });
+        } else {
+          // proceed with email to reset password
+          sendResetEmail(data[0], redirectUrl, res);
+        }
+      } else {
         res.json({
-            status : "FAILED",
-            message : "Clearing existing password reset records failed",
+          status: "FAILED",
+          message: "No account with the supplied email exists!",
         });
-     })
-}
+      }
+    })
+    .catch((error) => {
+      console.log(error);
+      res.json({
+        status: "FAILED",
+        message: "An error occured while checking for existing user",
+      });
+    });
+});
 
+//send password reset email
+const sendResetEmail = ({ _id, email }, redirectUrl, res) => {
+  const resetString = uuidv4 + _id;
+  //First, we clear all existing reset records
+  PasswordReset.deleteMany({ userId: _id })
+    .then((result) => {
+      //reset records deleted successfully
+      //Now we send the email
 
-module.exports = Userrouter
+      //mail options
+      const mailOptions = {
+        from: process.env.AUTH_EMAIL,
+        to: email,
+        subject: "Password reset",
+        html: ` <p>Use the link below to reset your password.</p>
+            <p>This link <b>expires in 1 hour</b>.</p>
+            <p>Press <a href="${redirectUrl} + "/" + ${_id} + "/" + ${resetString}">here</a> to proceed.</p>`,
+      };
+
+      //hash the reset string
+      const saltRounds = 10;
+      bcrypt
+        .hash()
+        .then((hashedResetString) => {
+          //set values in password reset collection
+          const newPasswordReset = new PasswordReset({
+            userId: _id,
+            uniqueString: hashedResetString,
+            createdAt: Date.now(),
+            expiresAt: Date.now() + 3600000,
+          });
+          newPasswordReset
+            .save()
+            .then(() => {
+              transporter
+                .sendMail(mailOptions)
+                .then(() => {
+                  //reset email sent and password
+                  res.json({
+                    status: "PENDING",
+                    message: "Password reset email sent",
+                  });
+                })
+                .catch((error) => {
+                  console.log(error);
+                  return res.status(500).json({
+                    status: "FAILED",
+                    message: "Password reset email failed!",
+                  });
+                });
+            })
+            .catch((error) => {
+              console.log(error);
+              return res.status(500).json({
+                status: "FAILED",
+                message: "Couldn't save password reset data!",
+              });
+            });
+        })
+        .catch((error) => {
+          console.log(error);
+          return res.status(500).json({
+            status: "FAILED",
+            message: "An error occured while hashing the password reset data!",
+          });
+        });
+    })
+    .catch((error) => {
+      console.log(error);
+      res.json({
+        status: "FAILED",
+        message: "Clearing existing password reset records failed",
+      });
+    });
+};
+
+module.exports = Userrouter;
