@@ -227,9 +227,9 @@ Userrouter.get("/verify-email/:userId/:uniqueString", async (req, res) => {
       });
     }
 
-    console.log("userId:", userId);
-    console.log("URL uniqueString:", uniqueString);
-    console.log("Hashed Stored uniqueString in DB:", record.uniqueString);
+    // console.log("userId:", userId);
+    // console.log("URL uniqueString:", uniqueString);
+    // console.log("Hashed Stored uniqueString in DB:", record.uniqueString);
 
     // Compare the uniqueString in the URL with the hashed string stored in the DB
     const isMatch = await bcrypt.compare(uniqueString, record.uniqueString);
@@ -239,12 +239,23 @@ Userrouter.get("/verify-email/:userId/:uniqueString", async (req, res) => {
       await User.findByIdAndUpdate(userId, { verified: true }, { new: true });
 
       // Delete old records when a new verification email is sent:
-      await UserVerification.deleteOne({ userId });
+    //   await UserVerification.deleteOne({ userId })
+    //   .then(() => {
+    //     console.log("Verification record deleted");
+    //     res.redirect('/login');
+    // });
 
+      //  // For browser requests (clicking link):
+      //  if (req.headers.accept?.includes("text/html")) {
+      //   return res.send(`<h1>Email Verified Successfully!</h1>`);
+      // }
+
+      // res.redirect('/login'),
       // Return success response
-      return res.json({
+       res.status(200).json({
         status: "SUCCESS",
         message: "Email verified successfully!",
+        
       });
     } else {
       return res.status(401).json({
@@ -268,7 +279,7 @@ Userrouter.post("/login", async (req, res) => {
   password = password.trim();
 
   if (email === "" || password === "") {
-    return res.status(404).json({
+    return res.status(400).json({
       status: "FAILED",
       message: "Empty credentials supplied",
     });
@@ -277,15 +288,15 @@ Userrouter.post("/login", async (req, res) => {
     //check if user exists
     const user = await User.findOne({ email });
     if (!user) {
-      return res.json({
+      return res.status(400).json({
         status: "FAILED",
-        message: "Invalid credentials!",
+        message: "Invalid E-mail!",
       });
     }
 
     //check if user is verified
     if (!user.verified) {
-      return res.status(404).json({
+      return res.status(403).json({
         status: "FAILED",
         message: "Email hasn't been verified yet. Check your inbox",
       });
@@ -293,118 +304,141 @@ Userrouter.post("/login", async (req, res) => {
 
     const isPasswordMatch = await bcrypt.compare(password, user.password);
     if (!isPasswordMatch) {
-      return res.json({
+      return res.status(403).json({
         status: "FAILED",
         message: "Invalid password!",
       });
     }
 
-    return res.json({
+    return res.status(200).json({
       status: "SUCCESS",
-      message: "Sign-in successful!",
+      message: "Log-in successful!",
       data: user,
     });
   } catch (error) {
     console.error(error);
-    return res.json({
+    return res.status(500).json({
       status: "FAILED",
       message: "An error occurred during Sign-in.",
     });
   }
 });
 
-//Password reset stuff
+//Request to Reset Password
 Userrouter.post("/requestPasswordReset", (req, res) => {
   const { email, redirectUrl } = req.body;
 
-  //check if email exists
-  User.find({ email })
-    .then((data) => {
-      if (data.length) {
-        //user exists
+  // Validate email and redirectUrl
+  if (!email || !redirectUrl) {
+    return res.status(400).json({
+      status: "FAILED",
+      message: "Email and redirect URL are required.",
+    });
+  }
 
-        //check if user is verified
-        if (!data[0].verified) {
-          res.json({
-            status: "FAILED",
-            message: "Email hasn't been verified yet. Check your inbox",
-          });
-        } else {
-          // proceed with email to reset password
-          sendResetEmail(data[0], redirectUrl, res);
-        }
-      } else {
-        res.json({
+  // Check if the user exists
+  User.findOne({ email })
+    .then((user) => {
+      if (!user) {
+        return res.status(404).json({
           status: "FAILED",
           message: "No account with the supplied email exists!",
         });
       }
+
+      // Check if the user is verified
+      if (!user.verified) {
+        return res.status(400).json({
+          status: "FAILED",
+          message: "Email hasn't been verified yet. Check your inbox",
+        });
+      }
+
+      // Proceed with sending the reset email
+      sendResetEmail(user, redirectUrl, res);
     })
     .catch((error) => {
-      console.log(error);
-      res.json({
+      console.error(error);
+      return res.status(500).json({
         status: "FAILED",
-        message: "An error occured while checking for existing user",
+        message: "An error occurred while checking for existing user.",
       });
     });
 });
 
+
+// Initialize nodemailer transporter
+let transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.AUTH_EMAIL,
+    pass: process.env.AUTH_PASS,
+  },
+  logger: true,
+  debug: true,
+});
+
+
 //send password reset email
 const sendResetEmail = ({ _id, email }, redirectUrl, res) => {
-  const resetString = uuidv4 + _id;
-  //First, we clear all existing reset records
+  const resetString = uuidv4() + _id; // Create a unique reset string
+
+
+  console.log("Redirect URL:", redirectUrl);
+  console.log("User ID:", _id);
+  console.log("Reset String:", resetString);
+
+
+  // Clear existing password reset records
   PasswordReset.deleteMany({ userId: _id })
-    .then((result) => {
-      //reset records deleted successfully
-      //Now we send the email
-
-      //mail options
-      const mailOptions = {
-        from: process.env.AUTH_EMAIL,
-        to: email,
-        subject: "Password reset",
-        html: ` <p>Use the link below to reset your password.</p>
-            <p>This link <b>expires in 1 hour</b>.</p>
-            <p>Press <a href="${redirectUrl} + "/" + ${_id} + "/" + ${resetString}">here</a> to proceed.</p>`,
-      };
-
-      //hash the reset string
-      const saltRounds = 10;
+    .then(() => {
+      // Hash the reset string
       bcrypt
-        .hash()
+        .hash(resetString, 10)
         .then((hashedResetString) => {
-          //set values in password reset collection
+          // Create a password reset record
           const newPasswordReset = new PasswordReset({
             userId: _id,
             uniqueString: hashedResetString,
             createdAt: Date.now(),
-            expiresAt: Date.now() + 3600000,
+            expiresAt: Date.now() + 3600000, // 1 hour expiry
           });
+
           newPasswordReset
             .save()
             .then(() => {
-              transporter
-                .sendMail(mailOptions)
-                .then(() => {
-                  //reset email sent and password
-                  res.json({
-                    status: "PENDING",
-                    message: "Password reset email sent",
-                  });
-                })
-                .catch((error) => {
+              // Set up email options
+              const mailOptions = {
+                from: process.env.AUTH_EMAIL,
+                to: email,
+                subject: "Password Reset",
+                html: `<p>Use the link below to reset your password.</p>
+                        <p>This link <b>expires in 1 hour</b>.</p>
+                        <p>Click <a href="${redirectUrl}/${_id}/${resetString}">here</a> to proceed.</p>`,
+              };
+
+              // Send the reset email
+              transporter.sendMail(mailOptions, (error, info) => {
+                if (error) {
                   console.log(error);
                   return res.status(500).json({
                     status: "FAILED",
-                    message: "Password reset email failed!",
+                    message: "Failed to send password reset email.",
                   });
-                });
+                } else {
+                  console.log("Password reset email sent:", info.response);
+                  return res.status(200).json({
+                    status: "PENDING",
+                    message: "Password reset email sent.",
+                  });
+                }
+              });
             })
             .catch((error) => {
               console.log(error);
               return res.status(500).json({
                 status: "FAILED",
-                message: "Couldn't save password reset data!",
+                message: "Couldn't save password reset data.",
               });
             });
         })
@@ -412,17 +446,105 @@ const sendResetEmail = ({ _id, email }, redirectUrl, res) => {
           console.log(error);
           return res.status(500).json({
             status: "FAILED",
-            message: "An error occured while hashing the password reset data!",
+            message: "An error occurred while hashing the reset string.",
           });
         });
     })
     .catch((error) => {
       console.log(error);
-      res.json({
+      return res.status(500).json({
         status: "FAILED",
-        message: "Clearing existing password reset records failed",
+        message: "An error occurred while clearing existing password reset records.",
       });
     });
 };
+
+Userrouter.post("/resetPassword/:userId/:resetString", (req, res) => {
+  const { userId, resetString } = req.params;
+  const { newPassword } = req.body;
+
+  if (!newPassword) {
+    return res.status(400).json({
+      status: "FAILED",
+      message: "New password is required.",
+    });
+  }
+
+  // Check if the reset link has expired
+  PasswordReset.findOne({ userId })
+    .then((record) => {
+      if (!record) {
+        return res.status(404).json({
+          status: "FAILED",
+          message: "Invalid or expired reset link.",
+        });
+      }
+
+      // Check if the reset link has expired
+      if (Date.now() > record.expiresAt) {
+        return res.status(400).json({
+          status: "FAILED",
+          message: "Reset link has expired.",
+        });
+      }
+
+      // Compare the reset string from the URL with the hashed string stored in the database
+      bcrypt.compare(resetString, record.uniqueString, (err, isMatch) => {
+        if (err || !isMatch) {
+          return res.status(400).json({
+            status: "FAILED",
+            message: "Invalid reset link.",
+          });
+        }
+
+        // Hash the new password and update it
+        bcrypt
+          .hash(newPassword, 10)
+          .then((hashedPassword) => {
+            // Update the user's password
+            User.updateOne({ _id: userId }, { password: hashedPassword })
+              .then(() => {
+                // Delete the reset record
+                PasswordReset.deleteOne({ userId })
+                  .then(() => {
+                    return res.status(200).json({
+                      status: "SUCCESS",
+                      message: "Password reset successfully.",
+                    });
+                  })
+                  .catch((error) => {
+                    console.log(error);
+                    return res.status(500).json({
+                      status: "FAILED",
+                      message: "An error occurred while deleting password reset record.",
+                    });
+                  });
+              })
+              .catch((error) => {
+                console.log(error);
+                return res.status(500).json({
+                  status: "FAILED",
+                  message: "An error occurred while updating the password.",
+                });
+              });
+          })
+          .catch((error) => {
+            console.log(error);
+            return res.status(500).json({
+              status: "FAILED",
+              message: "An error occurred while hashing the new password.",
+            });
+          });
+      });
+    })
+    .catch((error) => {
+      console.log(error);
+      return res.status(500).json({
+        status: "FAILED",
+        message: "An error occurred while checking password reset record.",
+      });
+    });
+});
+
 
 module.exports = Userrouter;

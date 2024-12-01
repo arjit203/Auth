@@ -5,11 +5,17 @@ const express = require('express');
 const app = express();
 const path = require('path');
 const port = 5500;
+const cors = require('cors'); // Import CORS
 const Userrouter = require('./api/user1');
 
 //For acceppting post form data
 const bodyParser = require('express').json;
 app.use(bodyParser());
+
+app.use(cors({
+    origin: 'https://e-mail-auth.onrender.com',
+    credentials: true,  
+}));
 
 app.use(express.urlencoded({ extended : false}))
 
