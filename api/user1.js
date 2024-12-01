@@ -13,7 +13,6 @@ const bcrypt = require("bcrypt");
 
 require("dotenv").config();
 
-
 //SIGNUP
 
 Userrouter.post("/signup", async (req, res) => {
@@ -134,10 +133,9 @@ const sendVerificationEmail = ({ _id, email, name }, res) => {
 
   const uniqueString = uuidv4() + _id; // Create a unique string for the verification link
 
- // Use the BASE_URL from environment variable to generate the link
- const verificationLink = `${process.env.BASE_URL}/user/verify-email/${uniqueString}`;
+  // Use the BASE_URL from environment variable to generate the link
+  const verificationLink =  `${process.env.BASE_URL}/user/verify-email/${_id}/${uniqueString}`;
 
- 
   // Log the verification link for debugging
   console.log("Verification Link:", verificationLink);
 
@@ -205,61 +203,63 @@ const sendVerificationEmail = ({ _id, email, name }, res) => {
 };
 
 //verify email
-Userrouter.get("/verify/:userId/:uniqueString", async (req, res) => {
-    const { userId, uniqueString } = req.params;
-  
-    try {
-      // Find the verification record by userId
-      const record = await UserVerification.findOne({ userId });
-  
-      if (!record) {
-        return res.status(404).json({
-          status: "FAILED",
-          message: "Verification link expired or invalid.",
-        });
-      }
-  
-      const now = Date.now();
-  
-      // Check if the verification link has expired
-      if (now > record.expiresAt) {
-        return res.status(404).json({
-          status: "FAILED",
-          message: "Verification link has expired.",
-        });
-      }
+Userrouter.get("/verify-email/:userId/:uniqueString", async (req, res) => {
+  const { userId, uniqueString } = req.params;
 
+  try {
+    // Find the verification record by userId
+    const record = await UserVerification.findOne({ userId });
 
-      console.log('URL uniqueString:', uniqueString);
-      console.log('Stored uniqueString:', record.uniqueString);
-
-  
-      // Compare the uniqueString in the URL with the hashed string stored in the DB
-      const isMatch = await bcrypt.compare(uniqueString, record.uniqueString);
-  
-      if (isMatch) {
-        // If matched, update the user to verified
-        await User.updateOne({ _id: userId }, { verified: true });
-  
-        // Delete the verification record from the DB
-        await UserVerification.deleteOne({ userId });
-  
-        return res.redirect("/login");
-      } else {
-        return res.status(401).json({
-          status: "FAILED",
-          message: "Invalid verification link.",
-        });
-      }
-    } catch (error) {
-      console.error(error);
-      return res.status(500).json({
+    if (!record) {
+      return res.status(404).json({
         status: "FAILED",
-        message: "Error verifying user.",
+        message: "Verification link expired or invalid.",
       });
     }
-  });
-  
+
+    const now = Date.now();
+
+    // Check if the verification link has expired
+    if (now > record.expiresAt) {
+      return res.status(404).json({
+        status: "FAILED",
+        message: "Verification link has expired.",
+      });
+    }
+
+    console.log("userId:", userId);
+    console.log("URL uniqueString:", uniqueString);
+    console.log("Hashed Stored uniqueString in DB:", record.uniqueString);
+
+    // Compare the uniqueString in the URL with the hashed string stored in the DB
+    const isMatch = await bcrypt.compare(uniqueString, record.uniqueString);
+
+    if (isMatch) {
+      // If matched, update the user to verified
+      await User.findByIdAndUpdate(userId, { verified: true }, { new: true });
+
+      // Delete old records when a new verification email is sent:
+      await UserVerification.deleteOne({ userId });
+
+      // Return success response
+      return res.json({
+        status: "SUCCESS",
+        message: "Email verified successfully!",
+      });
+    } else {
+      return res.status(401).json({
+        status: "FAILED",
+        message: "Invalid verification link.",
+      });
+    }
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      status: "FAILED",
+      message: "Error verifying user.",
+    });
+  }
+});
 
 //LOGIN
 Userrouter.post("/login", async (req, res) => {
