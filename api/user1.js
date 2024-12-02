@@ -335,12 +335,12 @@ const transporter = nodemailer.createTransport({
 
 // Request Forgot password 
 Userrouter.post("/forgotPassword", async (req, res) => {
-  const { email, redirectUrl } = req.body;
+  const { email } = req.body;
 
-  if (!email || !redirectUrl) {
+  if (!email ) {
     return res.status(400).json({
       status: "FAILED",
-      message: "Email and redirect URL are required.",
+      message: "Email is required.",
     });
   }
 
@@ -377,12 +377,21 @@ Userrouter.post("/forgotPassword", async (req, res) => {
 
     await newPasswordReset.save();
 
+    const resetUrl = `${process.env.BASE_URL}/resetPassword/${user._id}/${resetString}`;
+
     const mailOptions = {
       from: process.env.AUTH_EMAIL,
       to: email,
       subject: "Password Reset",
-      html: `<p>Click the link below to reset your password. This link <b>expires in 1 hour</b>.</p>
-             <a href="${redirectUrl}/${user._id}/${resetString}">Reset Password</a>`,
+      html: `<p>Someone has requested a link to change your password.</p>
+      <br>
+      <p>Click the link below to reset your password.</p>
+             <a href="${resetUrl}">Change my Password</a>
+             <br>
+              <p>This link<b>expires in 1 hour</b></p>
+              <p>If you didn't request this, please ignore this email.</p>
+              <p>Your password won't change until you access the link and create a new one.</p>
+             `,
     };
 
     transporter.sendMail(mailOptions, (error, info) => {
@@ -410,24 +419,25 @@ Userrouter.post("/forgotPassword", async (req, res) => {
 
 Userrouter.post("/resetPassword/:userId/:resetString", async (req, res) => {
   const { userId, resetString } = req.params;
-  const { newPassword } = req.body;
+  const { newPassword,confirmPassword } = req.body;
 
-  if (!newPassword) {
+  if (!newPassword || !confirmPassword) {
     return res.status(400).json({
       status: "FAILED",
-      message: "New password is required.",
+      message: "New password and confirmation password are required.",
+    });
+  }
+
+  if (newPassword !== confirmPassword) {
+    return res.status(400).json({
+      status: "FAILED",
+      message: "Passwords do not match.",
     });
   }
 
   try {
     // Check if the reset link exists
-    const resetRecord = await PasswordReset.findOne({ userId }).catch((error) => {
-      console.error(error);
-      return res.status(500).json({
-        status: "FAILED",
-        message: "An error occurred while checking password reset record.",
-      });
-    });
+    const resetRecord = await PasswordReset.findOne({ userId });
 
     if (!resetRecord) {
       return res.status(404).json({

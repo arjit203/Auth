@@ -12,10 +12,36 @@ const Userrouter = require('./api/user1');
 const bodyParser = require('express').json;
 app.use(bodyParser());
 
+// Allowed origins for CORS
+// const allowedOrigins = [
+//     "*"
+//     // 'http://localhost:3000', // Local frontend
+//     // 'https://https://e-mail-auth.onrender.com', // Deployed frontend
+// ];
+
+// Use CORS with dynamic origin handling
+// app.use(cors({
+//     origin: (origin, callback) => {
+//         if (!origin || allowedOrigins.includes(origin)) {
+//             callback(null, true); // Allow the request
+//         } else {
+//             callback(new Error('Not allowed by CORS')); // Reject the request
+//         }
+//     },
+//     methods: ['GET', 'POST', 'PUT', 'DELETE'], // Allowed HTTP methods
+//     credentials: true, // Allow cookies and credentials
+// }));
+
 app.use(cors({
-    origin: 'https://e-mail-auth.onrender.com',
-    credentials: true,  
+    origin: '*', // Allow all origins
 }));
+
+
+// Your routes here
+app.get('/api', (req, res) => {
+    res.json({ message: 'CORS-enabled response' });
+});
+
 
 app.use(express.urlencoded({ extended : false}))
 
