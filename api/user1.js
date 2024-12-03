@@ -377,7 +377,7 @@ Userrouter.post("/forgotPassword", async (req, res) => {
 
     await newPasswordReset.save();
 
-    const resetUrl = `${process.env.BASE_URL}/resetPassword/${user._id}/${resetString}`;
+    const resetUrl = `${process.env.BASE_URL}/user/resetPassword/${user._id}/${resetString}`;
 
     const mailOptions = {
       from: process.env.AUTH_EMAIL,
@@ -388,7 +388,7 @@ Userrouter.post("/forgotPassword", async (req, res) => {
       <p>Click the link below to reset your password.</p>
              <a href="${resetUrl}">Change my Password</a>
              <br>
-              <p>This link<b>expires in 1 hour</b></p>
+              <p>This link <b>expires in 1 hour</b></p>
               <p>If you didn't request this, please ignore this email.</p>
               <p>Your password won't change until you access the link and create a new one.</p>
              `,
