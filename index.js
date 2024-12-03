@@ -2,6 +2,7 @@
 
 const connectDB = require("./config/database")  //database connection
 const express = require('express');
+const session = require('express-session');
 const app = express();
 const path = require('path');
 const port = 5500;
@@ -12,27 +13,15 @@ const Userrouter = require('./api/user1');
 const bodyParser = require('express').json;
 app.use(bodyParser());
 
-// Allowed origins for CORS
-// const allowedOrigins = [
-//     "*"
-//     // 'http://localhost:3000', // Local frontend
-//     // 'https://https://e-mail-auth.onrender.com', // Deployed frontend
-// ];
+app.use(session({
+    secret: 'ace-gik', // Replace with a random secret key
+    resave: false,
+    saveUninitialized: true,
+    cookie: { secure: true } // Set secure: true if using HTTPS
+  }));
 
-// Use CORS with dynamic origin handling
-// app.use(cors({
-//     origin: (origin, callback) => {
-//         if (!origin || allowedOrigins.includes(origin)) {
-//             callback(null, true); // Allow the request
-//         } else {
-//             callback(new Error('Not allowed by CORS')); // Reject the request
-//         }
-//     },
-//     methods: ['GET', 'POST', 'PUT', 'DELETE'], // Allowed HTTP methods
-//     credentials: true, // Allow cookies and credentials
-// }));
 
-app.use(cors({
+  app.use(cors({
     origin: '*', // Allow all origins
 }));
 

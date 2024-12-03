@@ -3,7 +3,6 @@ const Schema = mongoose.Schema;
 
 // UserVerification schema
 const UserVerificationSchema = new Schema({
-  name: { type: String, required: true },
   userId: {
     type: mongoose.Schema.Types.ObjectId, // Refers to User collection
     ref: 'User',

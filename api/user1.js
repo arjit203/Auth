@@ -54,10 +54,18 @@ Userrouter.post("/signup", async (req, res) => {
     });
   }
 
-  // Check if user already exists
   try {
-    const isUserExist = await User.findOne({ email });
-    if (isUserExist) {
+    // Check if the user already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      if (!existingUser.verified) {
+        // Resend verification email if the user is not verified
+        await UserVerification.deleteMany({ userId: existingUser._id }); // Remove old verification records
+       
+        sendVerificationEmail(existingUser, res); // Resend verification email
+       
+        return;
+      }
       return res.status(404).json({
         status: "FAILED",
         message: "User with the provided email already exists",
@@ -134,7 +142,7 @@ const sendVerificationEmail = ({ _id, email, name }, res) => {
   const uniqueString = uuidv4() + _id; // Create a unique string for the verification link
 
   // Use the BASE_URL from environment variable to generate the link
-  const verificationLink =  `${process.env.BASE_URL}/user/verify-email/${_id}/${uniqueString}`;
+  const verificationLink = `${process.env.BASE_URL}/user/verify-email/${_id}/${uniqueString}`;
 
   // Log the verification link for debugging
   console.log("Verification Link:", verificationLink);
@@ -221,15 +229,12 @@ Userrouter.get("/verify-email/:userId/:uniqueString", async (req, res) => {
 
     // Check if the verification link has expired
     if (now > record.expiresAt) {
+      await UserVerification.deleteOne({ userId }); // Delete expired record
       return res.status(404).json({
         status: "FAILED",
         message: "Verification link has expired.",
       });
     }
-
-    // console.log("userId:", userId);
-    // console.log("URL uniqueString:", uniqueString);
-    // console.log("Hashed Stored uniqueString in DB:", record.uniqueString);
 
     // Compare the uniqueString in the URL with the hashed string stored in the DB
     const isMatch = await bcrypt.compare(uniqueString, record.uniqueString);
@@ -239,24 +244,19 @@ Userrouter.get("/verify-email/:userId/:uniqueString", async (req, res) => {
       await User.findByIdAndUpdate(userId, { verified: true }, { new: true });
 
       // Delete old records when a new verification email is sent:
-    //   await UserVerification.deleteOne({ userId })
-    //   .then(() => {
-    //     console.log("Verification record deleted");
-    //     res.redirect('/login');
-    // });
+      await UserVerification.deleteOne({ userId });
 
       //  // For browser requests (clicking link):
-      //  if (req.headers.accept?.includes("text/html")) {
-      //   return res.send(`<h1>Email Verified Successfully!</h1>`);
-      // }
-
-      // res.redirect('/login'),
-      // Return success response
-       res.status(200).json({
-        status: "SUCCESS",
-        message: "Email verified successfully!",
-        
-      });
+      if (req.headers.accept?.includes("text/html")) {
+        // Respond with an HTML redirect for browsers
+        return res.redirect("/login");
+      } else {
+        // Respond with JSON for API clients or non-browser requests
+        return res.status(200).json({
+          status: "SUCCESS",
+          message: "Email verified successfully! Please log in.",
+        });
+      }
     } else {
       return res.status(401).json({
         status: "FAILED",
@@ -333,11 +333,11 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// Request Forgot password 
+// Request Forgot password
 Userrouter.post("/forgotPassword", async (req, res) => {
   const { email } = req.body;
 
-  if (!email ) {
+  if (!email) {
     return res.status(400).json({
       status: "FAILED",
       message: "Email is required.",
@@ -416,15 +416,22 @@ Userrouter.post("/forgotPassword", async (req, res) => {
   }
 });
 
-
-Userrouter.post("/resetPassword/:userId/:resetString", async (req, res) => {
+Userrouter.post("/resetPasswordSubmit/:userId/:resetString", async (req, res) => {
   const { userId, resetString } = req.params;
-  const { newPassword,confirmPassword } = req.body;
+  const { newPassword, confirmPassword } = req.body;
 
   if (!newPassword || !confirmPassword) {
     return res.status(400).json({
       status: "FAILED",
       message: "New password and confirmation password are required.",
+    });
+  }
+
+   // Check if the new password meets the minimum length requirement
+   if (newPassword.length < 8) {
+    return res.status(400).json({
+      status: "FAILED",
+      message: "Password must be at least 8 characters long.",
     });
   }
 
@@ -463,13 +470,15 @@ Userrouter.post("/resetPassword/:userId/:resetString", async (req, res) => {
     }
 
     // Compare reset string
-    const isMatch = await bcrypt.compare(resetString, resetRecord.uniqueString).catch((error) => {
-      console.error(error);
-      return res.status(500).json({
-        status: "FAILED",
-        message: "An error occurred while comparing the reset string.",
+    const isMatch = await bcrypt
+      .compare(resetString, resetRecord.uniqueString)
+      .catch((error) => {
+        console.error(error);
+        return res.status(500).json({
+          status: "FAILED",
+          message: "An error occurred while comparing the reset string.",
+        });
       });
-    });
 
     if (!isMatch) {
       return res.status(400).json({
@@ -477,6 +486,21 @@ Userrouter.post("/resetPassword/:userId/:resetString", async (req, res) => {
         message: "Invalid reset link.",
       });
     }
+
+
+     // Find the user to check if the old password is the same as the new password
+     const user = await User.findById(userId);
+
+     // Compare the new password with the user's current password
+     const isOldPasswordSame = await bcrypt.compare(newPassword, user.password);
+     if (isOldPasswordSame) {
+       return res.status(400).json({
+         status: "FAILED",
+         message: "New password cannot be the same as the old password.",
+       });
+      } 
+
+
 
     // Hash the new password and update it
     const hashedPassword = await bcrypt.hash(newPassword, 10).catch((error) => {
@@ -487,13 +511,15 @@ Userrouter.post("/resetPassword/:userId/:resetString", async (req, res) => {
       });
     });
 
-    await User.updateOne({ _id: userId }, { password: hashedPassword }).catch((error) => {
-      console.error(error);
-      return res.status(500).json({
-        status: "FAILED",
-        message: "An error occurred while updating the password.",
-      });
-    });
+    await User.findByIdAndUpdate({ _id: userId }, { password: hashedPassword } , { new: true } ).catch(
+      (error) => {
+        console.error(error);
+        return res.status(500).json({
+          status: "FAILED",
+          message: "An error occurred while updating the password.",
+        });
+      }
+    );
 
     // Delete the password reset record after successful password change
     await PasswordReset.deleteOne({ userId }).catch((error) => {
@@ -506,9 +532,8 @@ Userrouter.post("/resetPassword/:userId/:resetString", async (req, res) => {
 
     res.status(200).json({
       status: "SUCCESS",
-      message: "Password reset successfully.",
+      message: "Password reset successfully.You can now log in.",
     });
-
   } catch (error) {
     console.error(error);
     return res.status(500).json({
@@ -517,6 +542,74 @@ Userrouter.post("/resetPassword/:userId/:resetString", async (req, res) => {
     });
   }
 });
+
+Userrouter.get("/resetPassword/:userId/:uniqueString", async (req, res) => {
+  const { userId, uniqueString } = req.params;
+
+  try {
+    // Find the reset password record
+    const record = await PasswordReset.findOne({ userId });
+
+    if (!record) {
+      return res.status(404).json({
+        status: "FAILED",
+        message: "Invalid or expired reset link.",
+      });
+    }
+
+    // Check if the reset link has expired
+    const now = Date.now();
+    if (now > record.expiresAt) {
+      return res.status(404).json({
+        status: "FAILED",
+        message: "Reset link has expired.",
+      });
+    }
+
+    // Verify the unique string
+    const isMatch = await bcrypt.compare(uniqueString, record.uniqueString);
+    if (!isMatch) {
+      return res.status(401).json({
+        status: "FAILED",
+        message: "Invalid reset link.",
+      });
+    }
+
+      // Redirect to the POST route for password reset
+      return res.redirect(307, `/user/resetPasswordSubmit/${userId}/${uniqueString}`);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({
+        status: "FAILED",
+        message: "Server error while verifying reset link.",
+      });
+    }
+  });
+
+
+//LOGOUT
+Userrouter.post('/logout', (req, res) => {
+  if (req.session) {
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).json({
+          status: 'FAILED',
+          message: 'Error during session destruction!',
+        });
+      }
+      res.status(200).json({
+        status: 'SUCCESS',
+        message: 'Logged out successfully!',
+      });
+    });
+  } else {
+    return res.status(400).json({
+      status: 'FAILED',
+      message: 'No active session found.',
+    });
+  }
+});
+
 
 
 module.exports = Userrouter;
